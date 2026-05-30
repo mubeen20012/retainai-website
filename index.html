@@ -822,6 +822,381 @@ function toggleFaq(el) {
   if(!isOpen) item.classList.add('open');
 }
 
+// ─── ADMIN PANEL ───
+// Access by typing: retainai-website.vercel.app/#admin
+const ADMIN_PASSWORD = 'retainai2025';
+const FORMSPREE_KEY  = 'xvzyyypj';
+
+// Local storage key for approved/declined state
+const STORE_KEY = 'retainai_admin_data';
+
+function loadAdminData() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveAdminData(data) {
+  localStorage.setItem(STORE_KEY, JSON.stringify(data));
+}
+
+// Inject admin panel HTML into page
+function injectAdminPanel() {
+  if (document.getElementById('admin-overlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'admin-overlay';
+  overlay.innerHTML = `
+  <style>
+    #admin-overlay {
+      position:fixed;inset:0;background:#080C10;z-index:99999;
+      font-family:'DM Sans',sans-serif;overflow-y:auto;
+    }
+    #admin-login {
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      min-height:100vh;gap:16px;
+    }
+    #admin-login h2 { color:#ECF0F5;font-size:24px;font-weight:700;margin-bottom:8px; }
+    #admin-login p  { color:#8B97A6;font-size:14px;margin-bottom:8px; }
+    #admin-pw-input {
+      background:#161D28;border:1px solid rgba(255,255,255,0.1);border-radius:9px;
+      padding:12px 18px;font-size:15px;color:#ECF0F5;width:300px;outline:none;
+      font-family:'DM Sans',sans-serif;
+    }
+    #admin-pw-input:focus { border-color:rgba(232,130,90,0.5); }
+    #admin-login-btn {
+      background:#E8825A;color:#080C10;font-weight:700;font-size:14px;
+      padding:12px 28px;border-radius:9px;border:none;cursor:pointer;width:300px;
+      font-family:'DM Sans',sans-serif;transition:background 0.2s;
+    }
+    #admin-login-btn:hover { background:#F09070; }
+    #admin-err { color:#F87171;font-size:13px;display:none; }
+    #admin-panel { display:none;padding:40px 5%;max-width:1000px;margin:0 auto; }
+    .admin-header {
+      display:flex;align-items:center;justify-content:space-between;
+      margin-bottom:32px;flex-wrap:wrap;gap:16px;
+    }
+    .admin-title { font-size:22px;font-weight:700;color:#ECF0F5;letter-spacing:-0.02em; }
+    .admin-title span { color:#E8825A; }
+    .admin-close-btn {
+      background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);
+      border-radius:8px;padding:8px 16px;color:#8B97A6;font-size:13px;font-weight:600;
+      cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;
+    }
+    .admin-close-btn:hover { color:#ECF0F5;background:rgba(255,255,255,0.1); }
+    .admin-stats {
+      display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px;
+    }
+    .admin-stat {
+      background:#161D28;border:1px solid rgba(255,255,255,0.06);border-radius:10px;
+      padding:16px 20px;text-align:center;
+    }
+    .admin-stat-num { font-size:28px;font-weight:700;color:#E8825A;font-family:'JetBrains Mono',monospace; }
+    .admin-stat-lbl { font-size:11px;color:#4A5568;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-top:3px; }
+    .admin-refresh-btn {
+      background:#E8825A;color:#080C10;font-weight:700;font-size:13px;
+      padding:10px 20px;border-radius:8px;border:none;cursor:pointer;
+      font-family:'DM Sans',sans-serif;margin-bottom:20px;transition:all 0.2s;
+    }
+    .admin-refresh-btn:hover { background:#F09070; }
+    .wl-table { width:100%;border-collapse:collapse; }
+    .wl-table th {
+      text-align:left;font-size:11px;font-weight:700;letter-spacing:0.08em;
+      text-transform:uppercase;color:#4A5568;padding:10px 14px;
+      border-bottom:1px solid rgba(255,255,255,0.06);
+    }
+    .wl-row { border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.15s; }
+    .wl-row:hover { background:rgba(255,255,255,0.02); }
+    .wl-row td { padding:14px 14px;font-size:14px;color:#8B97A6;vertical-align:middle; }
+    .wl-email { color:#ECF0F5;font-weight:600; }
+    .wl-date  { font-size:12px;color:#4A5568; }
+    .status-badge {
+      font-size:10px;font-weight:700;padding:3px 10px;border-radius:5px;
+      letter-spacing:0.05em;text-transform:uppercase;
+    }
+    .status-pending  { background:rgba(251,191,36,0.12);color:#FBBF24; }
+    .status-approved { background:rgba(61,214,140,0.12);color:#3DD68C; }
+    .status-declined { background:rgba(248,113,113,0.1);color:#F87171; }
+    .action-btn {
+      font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;border:none;
+      cursor:pointer;font-family:'DM Sans',sans-serif;margin-right:6px;transition:all 0.2s;
+    }
+    .approve-btn { background:rgba(61,214,140,0.12);color:#3DD68C;border:1px solid rgba(61,214,140,0.2); }
+    .approve-btn:hover { background:rgba(61,214,140,0.22); }
+    .decline-btn { background:rgba(248,113,113,0.1);color:#F87171;border:1px solid rgba(248,113,113,0.18); }
+    .decline-btn:hover { background:rgba(248,113,113,0.2); }
+    .copy-btn { background:rgba(255,255,255,0.06);color:#8B97A6;border:1px solid rgba(255,255,255,0.08); }
+    .copy-btn:hover { color:#ECF0F5;background:rgba(255,255,255,0.1); }
+    .admin-empty { text-align:center;padding:60px 20px;color:#4A5568;font-size:15px; }
+    .admin-loading { text-align:center;padding:60px 20px;color:#8B97A6;font-size:14px; }
+    @media(max-width:700px) {
+      .admin-stats { grid-template-columns:repeat(2,1fr); }
+      .wl-table th:nth-child(3), .wl-table td:nth-child(3) { display:none; }
+    }
+  </style>
+
+  <!-- LOGIN SCREEN -->
+  <div id="admin-login">
+    <div style="width:40px;height:40px;background:#E8825A;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M10 2L16 6V14L10 18L4 14V6L10 2Z" stroke="#080C10" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="10" cy="10" r="2.5" fill="#080C10"/>
+      </svg>
+    </div>
+    <h2>RetainAI Admin</h2>
+    <p>Enter your password to access the waitlist dashboard</p>
+    <input type="password" id="admin-pw-input" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')adminLogin()">
+    <button id="admin-login-btn" onclick="adminLogin()">Access Dashboard →</button>
+    <span id="admin-err">Incorrect password. Try again.</span>
+    <button onclick="closeAdmin()" style="background:transparent;border:none;color:#4A5568;font-size:13px;cursor:pointer;margin-top:8px;font-family:'DM Sans',sans-serif;">← Back to website</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="admin-panel">
+    <div class="admin-header">
+      <div>
+        <div class="admin-title">Retain<span>AI</span> — Waitlist Dashboard</div>
+        <div style="font-size:13px;color:#4A5568;margin-top:4px;">Manage early access signups</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="admin-refresh-btn" onclick="loadSubmissions()">↻ Refresh</button>
+        <button class="admin-close-btn" onclick="closeAdmin()">← Back to website</button>
+      </div>
+    </div>
+
+    <div class="admin-stats">
+      <div class="admin-stat">
+        <div class="admin-stat-num" id="stat-total">—</div>
+        <div class="admin-stat-lbl">Total signups</div>
+      </div>
+      <div class="admin-stat">
+        <div class="admin-stat-num" style="color:#FBBF24;" id="stat-pending">—</div>
+        <div class="admin-stat-lbl">Pending review</div>
+      </div>
+      <div class="admin-stat">
+        <div class="admin-stat-num" style="color:#3DD68C;" id="stat-approved">—</div>
+        <div class="admin-stat-lbl">Approved</div>
+      </div>
+      <div class="admin-stat">
+        <div class="admin-stat-num" style="color:#F87171;" id="stat-declined">—</div>
+        <div class="admin-stat-lbl">Declined</div>
+      </div>
+    </div>
+
+    <table class="wl-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Submitted</th>
+          <th>Source</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="wl-tbody">
+        <tr><td colspan="5" class="admin-loading">Loading submissions...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function adminLogin() {
+  const pw = document.getElementById('admin-pw-input').value;
+  if (pw === ADMIN_PASSWORD) {
+    document.getElementById('admin-login').style.display = 'none';
+    document.getElementById('admin-panel').style.display = 'block';
+    loadSubmissions();
+  } else {
+    document.getElementById('admin-err').style.display = 'block';
+    document.getElementById('admin-pw-input').value = '';
+    document.getElementById('admin-pw-input').focus();
+  }
+}
+
+function closeAdmin() {
+  const overlay = document.getElementById('admin-overlay');
+  if (overlay) overlay.remove();
+  window.location.hash = '';
+}
+
+async function loadSubmissions() {
+  const tbody = document.getElementById('wl-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="admin-loading">Loading submissions from Formspree...</td></tr>';
+
+  try {
+    const res = await fetch(`https://formspree.io/api/0/forms/${FORMSPREE_KEY}/submissions`, {
+      headers: { 'Accept': 'application/json' }
+    });
+
+    let submissions = [];
+    if (res.ok) {
+      const data = await res.json();
+      submissions = data.submissions || [];
+    }
+
+    // If API not accessible, show manual entry fallback
+    if (submissions.length === 0) {
+      renderManualFallback();
+      return;
+    }
+
+    renderSubmissions(submissions);
+  } catch(err) {
+    renderManualFallback();
+  }
+}
+
+function renderManualFallback() {
+  // Load from localStorage (manually added)
+  const adminData = loadAdminData();
+  const manual = adminData.manual || [];
+
+  if (manual.length === 0) {
+    document.getElementById('wl-tbody').innerHTML = `
+      <tr><td colspan="5">
+        <div class="admin-empty">
+          <div style="font-size:32px;margin-bottom:12px;">📋</div>
+          <div style="color:#8B97A6;margin-bottom:8px;">No submissions yet — or add them manually below</div>
+          <div style="display:flex;gap:10px;justify-content:center;margin-top:16px;">
+            <input type="email" id="manual-email" placeholder="founder@beautybrand.com"
+              style="background:#161D28;border:1px solid rgba(255,255,255,0.1);border-radius:8px;
+              padding:10px 14px;font-size:13px;color:#ECF0F5;width:240px;outline:none;font-family:'DM Sans',sans-serif;">
+            <button onclick="addManual()" style="background:#E8825A;color:#080C10;font-weight:700;
+              font-size:13px;padding:10px 16px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;">
+              Add →
+            </button>
+          </div>
+        </div>
+      </td></tr>`;
+    updateStats(0,0,0,0);
+    return;
+  }
+
+  renderSubmissions(manual.map(m => ({ email: m.email, _date: m.date, _id: m.id })));
+}
+
+function addManual() {
+  const email = document.getElementById('manual-email')?.value;
+  if (!email || !email.includes('@')) { alert('Enter a valid email'); return; }
+  const adminData = loadAdminData();
+  if (!adminData.manual) adminData.manual = [];
+  const id = 'manual_' + Date.now();
+  adminData.manual.push({ id, email, date: new Date().toISOString() });
+  saveAdminData(adminData);
+  loadSubmissions();
+}
+
+function renderSubmissions(submissions) {
+  const adminData = loadAdminData();
+  const statuses = adminData.statuses || {};
+  const tbody = document.getElementById('wl-tbody');
+
+  if (submissions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="admin-empty">📋 No submissions yet. Share your website to get signups!</td></tr>';
+    updateStats(0,0,0,0);
+    return;
+  }
+
+  let pending=0, approved=0, declined=0;
+  let rows = '';
+
+  submissions.forEach(sub => {
+    const id = sub._id || sub.id || sub.email;
+    const email = sub.email || sub.data?.email || '—';
+    const date = sub._date ? new Date(sub._date).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+    const source = sub.source || sub.data?.source || 'Portfolio Waitlist';
+    const status = statuses[id] || 'pending';
+
+    if(status==='pending') pending++;
+    else if(status==='approved') approved++;
+    else if(status==='declined') declined++;
+
+    const badgeClass = status==='approved' ? 'status-approved' : status==='declined' ? 'status-declined' : 'status-pending';
+    const badgeText  = status==='approved' ? '✓ Approved' : status==='declined' ? '✗ Declined' : '⏳ Pending';
+
+    const approvalEmail = `mailto:${email}?subject=You're approved — RetainAI early access is yours&body=Hi there,%0A%0AGreat news — you've been approved for RetainAI early access.%0A%0AHere's what you get:%0A→ 6 months completely free on the Growth plan ($79/mo value)%0A→ Direct access to our team for onboarding support%0A→ Your feedback shapes the product roadmap%0A%0ATo get started, book your free onboarding call here:%0Acal.com/retainai/demo%0A%0AOn the call we will:%0A- Connect your Shopify store (takes 5 minutes)%0A- Review your product catalogue together%0A- Activate your first nudge sequence live%0A%0AWe only have 10 early access spots. Your slot is reserved for 72 hours.%0A%0ATalk soon,%0AThe RetainAI Team%0Aretainai.app@gmail.com`;
+
+    rows += `
+    <tr class="wl-row" id="row-${id}">
+      <td class="wl-email">${email}</td>
+      <td class="wl-date">${date}</td>
+      <td class="wl-date">${source}</td>
+      <td><span class="status-badge ${badgeClass}" id="badge-${id}">${badgeText}</span></td>
+      <td>
+        <button class="action-btn approve-btn" onclick="setStatus('${id}','approved','${email}')">✓ Approve</button>
+        <button class="action-btn decline-btn" onclick="setStatus('${id}','declined','${email}')">✗ Decline</button>
+        <button class="action-btn copy-btn" onclick="navigator.clipboard.writeText('${email}');this.textContent='Copied!'">Copy</button>
+        ${status==='approved' ? `<a href="${approvalEmail}" class="action-btn approve-btn" style="text-decoration:none;display:inline-block;">📧 Send approval</a>` : ''}
+      </td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = rows;
+  updateStats(submissions.length, pending, approved, declined);
+}
+
+function setStatus(id, status, email) {
+  const adminData = loadAdminData();
+  if (!adminData.statuses) adminData.statuses = {};
+  adminData.statuses[id] = status;
+  saveAdminData(adminData);
+
+  // Update badge instantly
+  const badge = document.getElementById(`badge-${id}`);
+  if (badge) {
+    badge.className = `status-badge ${status==='approved'?'status-approved':status==='declined'?'status-declined':'status-pending'}`;
+    badge.textContent = status==='approved'?'✓ Approved':status==='declined'?'✗ Declined':'⏳ Pending';
+  }
+
+  // If approved — open Gmail with pre-written approval email
+  if (status === 'approved') {
+    const subject = encodeURIComponent("You're approved — RetainAI early access is yours");
+    const body = encodeURIComponent(`Hi there,
+
+Great news — you've been approved for RetainAI early access.
+
+Here's what you get:
+→ 6 months completely free on the Growth plan ($79/mo value)
+→ Direct access to our team for onboarding support  
+→ Your feedback shapes the product roadmap
+
+To get started, book your free onboarding call here:
+cal.com/retainai/demo
+
+On the call we will:
+- Connect your Shopify store (takes 5 minutes)
+- Review your product catalogue together
+- Activate your first nudge sequence live
+
+We only have 10 early access spots. Your slot is reserved for 72 hours.
+
+Talk soon,
+The RetainAI Team
+retainai.app@gmail.com`);
+
+    setTimeout(() => {
+      window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+    }, 300);
+  }
+
+  // Reload to update stats
+  setTimeout(() => loadSubmissions(), 500);
+}
+
+function updateStats(total, pending, approved, declined) {
+  document.getElementById('stat-total').textContent    = total;
+  document.getElementById('stat-pending').textContent  = pending;
+  document.getElementById('stat-approved').textContent = approved;
+  document.getElementById('stat-declined').textContent = declined;
+}
+
+// Listen for #admin in URL
+function checkAdminHash() {
+  if (window.location.hash === '#admin') {
+    injectAdminPanel();
+  }
+}
+window.addEventListener('hashchange', checkAdminHash);
+checkAdminHash();
+
 // Waitlist
 async function handleWaitlist(e) {
   e.preventDefault();
